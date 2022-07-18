@@ -1,84 +1,47 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract Staking is ReentrancyGuard {
-    IERC20 public s_stakingToken;
-    IERC20 public s_rewardToken;
+contract Staking {
 
-    uint256 public constant REWARD_RATE = 100;
+    IERC20 public stakingToken;
+    IERC20 public rewardToken;
     uint256 public s_totalSupply;
-    uint256 public s_rewardPerTokenStored;
-    uint256 public s_lastUpdateTime;
 
-    mapping(address => uint256) public s_balances;
+    mapping(address => uint256) public sTake_balances;
+    mapping(address => uint256) public blockTimeStart;
 
-    mapping(address => uint256) public s_userRewardPerTokenPaid;
 
-    mapping(address => uint256) public s_rewards;
-
-    modifier updateReward(address account) {
-        s_rewardPerTokenStored = rewardPerToken();
-        s_lastUpdateTime = block.timestamp;
-        s_rewards[account] = earned(account);
-        s_userRewardPerTokenPaid[account] = s_rewardPerTokenStored;
-        _;
+       constructor(address _stakeToken,address _rewardToken) {
+        stakingToken = IERC20(_stakeToken);
+        rewardToken = IERC20(_rewardToken);
     }
 
-    modifier moreThanZero(uint256 amount) {
-        if (amount == 0) {
-           require(amount >0,"Don't have reward");
-        }
-        _;
-    }
-
-    constructor(address stakingToken, address rewardToken) {
-        s_stakingToken = IERC20(stakingToken);
-        s_rewardToken = IERC20(rewardToken);
-    }
-
-    function earned(address account) public view returns (uint256) {
-        uint256 currentBalance = s_balances[account];
-        uint256 amountPaid = s_userRewardPerTokenPaid[account];
-        uint256 currentRewardPerToken = rewardPerToken();
-        uint256 pastRewards = s_rewards[account];
-        uint256 _earned = ((currentBalance * (currentRewardPerToken - amountPaid)) / 1e18) +
-            pastRewards;
-
-        return _earned;
-    }
-    function rewardPerToken() public view returns (uint256) {
-        if (s_totalSupply == 0) {
-            return s_rewardPerTokenStored;
-        } else {
-            return
-                s_rewardPerTokenStored +
-                (((block.timestamp - s_lastUpdateTime) * REWARD_RATE * 1e18) / s_totalSupply);
-        }
-    }
-
-    function stake(uint256 amount) external updateReward(msg.sender) moreThanZero(amount) {
-        s_balances[msg.sender] += amount;
+    function stake(uint256 amount) public {
+        require(amount > 0,"Please Enter Amount");
+        sTake_balances[msg.sender] += amount;
         s_totalSupply += amount;
-         s_stakingToken.transferFrom(msg.sender, address(this), amount);
-
+        blockTimeStart[msg.sender] = block.number;
+        stakingToken.transferFrom(msg.sender, address(this), amount);
     }
 
-    function withdraw(uint256 amount) external updateReward(msg.sender) moreThanZero(amount) {
-        s_balances[msg.sender] -= amount;
+
+    function reward(address _address) public view returns(uint256){
+         return (block.number - blockTimeStart[_address]) * 1 ether;
+        
+    }
+
+    function claimedReward () public {
+        uint256 rew = reward(msg.sender);
+        require(rew > 0,"You Don't have Reward");
+        rewardToken.transfer(msg.sender, rew);
+        blockTimeStart[msg.sender] = block.number;
+    }
+    function withdraw(uint256 amount) public {
+        require(sTake_balances[msg.sender] >= amount , "You Don't have enough Ether");
+        sTake_balances[msg.sender] -= amount;
         s_totalSupply -= amount;
-        s_stakingToken.transfer(msg.sender, amount);
-    }
-
-    function claimReward() external updateReward(msg.sender) {
-        uint256 reward = s_rewards[msg.sender];
-         s_rewardToken.transfer(msg.sender, reward);
-    }
-
-    function getStaked(address account) public view returns (uint256) {
-        return s_balances[account];
+        stakingToken.transfer(msg.sender, amount);
     }
 }
